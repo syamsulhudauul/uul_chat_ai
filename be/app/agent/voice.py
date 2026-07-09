@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.agent.audio_transcode import transcode_to_wav
 from app.agent.core import AgentCore, AgentReply
 from app.agent.gateway import LLMGatewayClient
 
@@ -23,10 +24,9 @@ class VoicePipeline:
         self.gateway = gateway
         self.agent = agent
 
-    async def run_turn(
-        self, conversation_id: str, audio_bytes: bytes, audio_format: str = "wav"
-    ) -> VoiceReply:
-        transcript = await self.gateway.transcribe(audio_bytes, audio_format=audio_format)
+    async def run_turn(self, conversation_id: str, audio_bytes: bytes) -> VoiceReply:
+        wav_bytes = await transcode_to_wav(audio_bytes)
+        transcript = await self.gateway.transcribe(wav_bytes, audio_format="wav")
         reply = await self.agent.run_turn(conversation_id, transcript)
         audio = await self.gateway.speak(reply.text)
         return VoiceReply(transcript=transcript, reply=reply, audio=audio)

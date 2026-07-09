@@ -29,7 +29,7 @@ class FakeStore:
 
 
 class FakeVoicePipeline:
-    async def run_turn(self, conversation_id: str, audio_bytes: bytes, audio_format: str = "wav"):
+    async def run_turn(self, conversation_id: str, audio_bytes: bytes):
         return VoiceReply(
             transcript="What are your skills?",
             reply=AgentReply(text="Go, Python, and LLM agents.", model_used="cheap"),
