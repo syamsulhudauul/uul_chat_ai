@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Mic, Square } from "lucide-react";
 import { getLatestConversation, sendVoiceMessage } from "@/lib/api";
-
-type Message = { role: "user" | "assistant"; content: string };
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { MessageList, type Message } from "@/components/message-list";
 
 export function VoiceWindow() {
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -76,34 +79,28 @@ export function VoiceWindow() {
   };
 
   return (
-    <div className="flex w-full max-w-lg flex-col gap-4">
-      <div className="flex min-h-[320px] flex-col gap-2 rounded-md border p-4">
-        {messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Hold the mic button and ask about my skills, experience, or projects.
-          </p>
-        )}
-        {messages.map((message, index) => (
-          <div key={index} className={message.role === "user" ? "text-right" : "text-left"}>
-            <span className="inline-block rounded-md bg-neutral-100 px-3 py-2 text-sm text-black">
-              {message.content}
-            </span>
-          </div>
-        ))}
-        {processing && <p className="text-sm text-muted-foreground">Thinking…</p>}
-      </div>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      <button
-        onClick={recording ? stopRecording : startRecording}
-        disabled={processing}
-        className={`self-center rounded-full px-6 py-3 text-sm text-white disabled:opacity-50 ${
-          recording ? "bg-red-600" : "bg-black"
-        }`}
-      >
-        {recording ? "Stop recording" : processing ? "Processing…" : "Start recording"}
-      </button>
-    </div>
+    <Card className="w-full max-w-lg overflow-hidden">
+      <MessageList
+        messages={messages}
+        pending={processing}
+        emptyHint="Hold the mic button and ask about my skills, experience, or projects."
+      />
+      <CardContent className="flex flex-col items-center gap-2 border-t bg-muted/30 p-4">
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button
+          onClick={recording ? stopRecording : startRecording}
+          disabled={processing}
+          size="icon"
+          variant={recording ? "destructive" : "default"}
+          aria-label={recording ? "Stop recording" : "Start recording"}
+          className={cn("h-14 w-14", recording && "animate-pulse")}
+        >
+          {recording ? <Square className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          {recording ? "Recording — tap to stop" : processing ? "Processing…" : "Tap to talk"}
+        </p>
+      </CardContent>
+    </Card>
   );
 }

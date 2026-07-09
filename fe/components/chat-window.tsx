@@ -1,27 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Send } from "lucide-react";
 import { getLatestConversation, sendChatMessage } from "@/lib/api";
-
-type Message = { role: "user" | "assistant"; content: string };
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { MessageList, type Message } from "@/components/message-list";
 
 export function ChatWindow() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    getLatestConversation()
+    getLatestConversation("chat")
       .then((res) => {
         setConversationId(res.conversation_id);
         setMessages(res.messages);
       })
       .catch(() => {
         // No prior conversation yet, or the BE isn't reachable — start fresh.
-      })
-      .finally(() => setLoaded(true));
+      });
   }, []);
 
   const send = async () => {
@@ -47,38 +48,24 @@ export function ChatWindow() {
   };
 
   return (
-    <div className="flex w-full max-w-lg flex-col gap-4">
-      <div className="flex min-h-[320px] flex-col gap-2 rounded-md border p-4">
-        {loaded && messages.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Ask about my skills, experience, or projects.
-          </p>
-        )}
-        {messages.map((message, index) => (
-          <div key={index} className={message.role === "user" ? "text-right" : "text-left"}>
-            <span className="inline-block rounded-md bg-neutral-100 px-3 py-2 text-sm text-black">
-              {message.content}
-            </span>
-          </div>
-        ))}
-        {sending && <p className="text-sm text-muted-foreground">Thinking…</p>}
-      </div>
-      <div className="flex gap-2">
-        <input
-          className="flex-1 rounded-md border px-3 py-2 text-sm"
+    <Card className="w-full max-w-lg overflow-hidden">
+      <MessageList
+        messages={messages}
+        pending={sending}
+        emptyHint="Ask about my skills, experience, or projects."
+      />
+      <CardContent className="flex gap-2 border-t bg-muted/30 p-3">
+        <Input
           value={input}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={(event) => event.key === "Enter" && send()}
           placeholder="Ask about my skills, experience, projects…"
-        />
-        <button
-          onClick={send}
           disabled={sending}
-          className="rounded-md bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
-        >
-          Send
-        </button>
-      </div>
-    </div>
+        />
+        <Button onClick={send} disabled={sending} size="icon" aria-label="Send message">
+          <Send className="h-4 w-4" />
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

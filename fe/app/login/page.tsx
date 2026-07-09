@@ -1,6 +1,8 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 export default function LoginPage() {
   const signInWithGoogle = async () => {
@@ -14,17 +16,20 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8 text-center">
-      <h1 className="text-2xl font-semibold">Sign in to chat with uul_chat_ai</h1>
-      <p className="max-w-md text-sm text-muted-foreground">
-        We ask you to sign in with Google so the owner knows who&apos;s asking.
-      </p>
-      <button
-        onClick={signInWithGoogle}
-        className="rounded-md bg-black px-4 py-2 text-white hover:bg-neutral-800"
-      >
-        Continue with Google
-      </button>
+    <main className="flex min-h-screen flex-col items-center justify-center p-8">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="items-center text-center">
+          <CardTitle>Sign in to chat with uul_chat_ai</CardTitle>
+          <CardDescription>
+            We ask you to sign in with Google so the owner knows who&apos;s asking.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button onClick={signInWithGoogle} className="w-full">
+            Continue with Google
+          </Button>
+        </CardContent>
+      </Card>
     </main>
   );
 }
