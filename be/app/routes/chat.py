@@ -62,10 +62,11 @@ async def chat(
 
 @router.get("/conversations/latest", response_model=LatestConversationResponse)
 async def latest_conversation(
+    mode: str = "chat",
     user: AuthenticatedUser = Depends(verify_jwt),
     store: ConversationStore = Depends(get_conversation_store),
 ) -> LatestConversationResponse:
-    conversation_id = await store.get_latest_conversation(user.user_id)
+    conversation_id = await store.get_latest_conversation(user.user_id, mode)
     if not conversation_id:
         return LatestConversationResponse(conversation_id=None, messages=[])
 

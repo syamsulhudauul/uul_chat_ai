@@ -30,7 +30,7 @@ async def test_get_latest_conversation_returns_none_when_empty():
         return httpx.Response(200, json=[])
 
     store = _store_with_handler(handler)
-    result = await store.get_latest_conversation("user-1")
+    result = await store.get_latest_conversation("user-1", "chat")
 
     assert result is None
 
@@ -39,10 +39,11 @@ async def test_get_latest_conversation_returns_none_when_empty():
 async def test_get_latest_conversation_returns_most_recent_id():
     def handler(request: httpx.Request) -> httpx.Response:
         assert "user_id=eq.user-1" in str(request.url)
+        assert "mode=eq.chat" in str(request.url)
         return httpx.Response(200, json=[{"id": "conv-42"}])
 
     store = _store_with_handler(handler)
-    result = await store.get_latest_conversation("user-1")
+    result = await store.get_latest_conversation("user-1", "chat")
 
     assert result == "conv-42"
 

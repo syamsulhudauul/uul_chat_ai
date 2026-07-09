@@ -63,7 +63,7 @@ class FakeStore:
     async def create_conversation(self, user_id: str, mode: str) -> str:
         return "conv-new"
 
-    async def get_latest_conversation(self, user_id: str) -> str | None:
+    async def get_latest_conversation(self, user_id: str, mode: str) -> str | None:
         return None
 
     async def get_history(self, conversation_id: str) -> list[dict]:

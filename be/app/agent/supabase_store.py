@@ -21,11 +21,12 @@ class SupabaseConversationStore:
         rows = response.json()
         return rows[0]["id"]
 
-    async def get_latest_conversation(self, user_id: str) -> str | None:
+    async def get_latest_conversation(self, user_id: str, mode: str) -> str | None:
         response = await self._client.get(
             "/rest/v1/conversations",
             params={
                 "user_id": f"eq.{user_id}",
+                "mode": f"eq.{mode}",
                 "select": "id",
                 "order": "created_at.desc",
                 "limit": "1",

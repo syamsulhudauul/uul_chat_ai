@@ -14,5 +14,15 @@ model_list:
       model: openai/text-embedding-3-small
       api_key: os.environ/OPENAI_API_KEY
 
+  - model_name: whisper
+    litellm_params:
+      model: openai/whisper-1
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: tts
+    litellm_params:
+      model: openai/tts-1
+      api_key: os.environ/OPENAI_API_KEY
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

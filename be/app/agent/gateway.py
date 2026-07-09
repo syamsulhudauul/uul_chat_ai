@@ -45,3 +45,26 @@ class LLMGatewayClient:
             response.raise_for_status()
             data = response.json()
             return data["data"][0]["embedding"]
+
+    async def transcribe(
+        self, audio_bytes: bytes, filename: str = "audio.webm", model: str = "whisper"
+    ) -> str:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
+            response = await client.post(
+                "/audio/transcriptions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                data={"model": model},
+                files={"file": (filename, audio_bytes, "application/octet-stream")},
+            )
+            response.raise_for_status()
+            return response.json()["text"]
+
+    async def speak(self, text: str, model: str = "tts", voice: str = "alloy") -> bytes:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
+            response = await client.post(
+                "/audio/speech",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={"model": model, "input": text, "voice": voice},
+            )
+            response.raise_for_status()
+            return response.content

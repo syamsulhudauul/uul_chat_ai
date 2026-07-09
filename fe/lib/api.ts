@@ -46,13 +46,46 @@ export async function sendChatMessage(
   return response.json();
 }
 
-export async function getLatestConversation(): Promise<LatestConversationResponse> {
-  const response = await fetch(`${API_BASE_URL}/conversations/latest`, {
+export async function getLatestConversation(
+  mode: "chat" | "voice" = "chat"
+): Promise<LatestConversationResponse> {
+  const response = await fetch(`${API_BASE_URL}/conversations/latest?mode=${mode}`, {
     headers: await authHeader(),
   });
 
   if (!response.ok) {
     throw new Error(`Failed to load conversation with status ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export type VoiceResponse = {
+  conversation_id: string;
+  transcript: string;
+  reply: string;
+  model_used: string;
+  audio_base64: string;
+};
+
+export async function sendVoiceMessage(
+  conversationId: string | null,
+  audio: Blob
+): Promise<VoiceResponse> {
+  const formData = new FormData();
+  formData.append("file", audio, "recording.webm");
+  if (conversationId) {
+    formData.append("conversation_id", conversationId);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/voice`, {
+    method: "POST",
+    headers: await authHeader(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Voice request failed with status ${response.status}`);
   }
 
   return response.json();
