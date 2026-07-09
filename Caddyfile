@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	reverse_proxy fe:3000
+}
+
+api.{$DOMAIN} {
+	reverse_proxy be:8000
+}
