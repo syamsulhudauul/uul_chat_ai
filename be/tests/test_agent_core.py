@@ -4,13 +4,22 @@ from app.agent.core import AgentCore
 
 
 class FakeGatewayClient:
-    def __init__(self, reply: str = "Hi, I'm the AI version of syamsulhudauul."):
-        self.reply = reply
-        self.calls: list[tuple[list[dict], str]] = []
+    """Returns queued responses in order (one per gateway call), or a fixed
+    single-turn reply if no queue was given.
+    """
 
-    async def chat(self, messages: list[dict], model: str = "cheap") -> str:
-        self.calls.append((messages, model))
-        return self.reply
+    def __init__(self, responses=None, reply: str = "Hi, I'm the AI version of syamsulhudauul."):
+        self.responses = list(responses) if responses is not None else None
+        self.reply = reply
+        self.calls: list[tuple[list[dict], str, list[dict] | None]] = []
+
+    async def chat_completion(
+        self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
+    ) -> dict:
+        self.calls.append((list(messages), model, tools))
+        if self.responses is not None:
+            return self.responses.pop(0)
+        return {"role": "assistant", "content": self.reply, "tool_calls": None}
 
 
 @pytest.mark.asyncio
@@ -31,7 +40,7 @@ async def test_run_turn_sends_user_message_to_gateway():
 
     await agent.run_turn("conv-1", "What are your skills?")
 
-    sent_messages, model = gateway.calls[0]
+    sent_messages, model, _tools = gateway.calls[0]
     assert model == "cheap"
     assert sent_messages[-1] == {"role": "user", "content": "What are your skills?"}
 
@@ -78,7 +87,7 @@ async def test_run_turn_includes_prior_history_in_gateway_call():
 
     await agent.run_turn("conv-1", "What are your skills?")
 
-    sent_messages, _ = gateway.calls[0]
+    sent_messages, _model, _tools = gateway.calls[0]
     assert sent_messages[0] == prior_history[0]
     assert sent_messages[1] == prior_history[1]
     assert sent_messages[-1] == {"role": "user", "content": "What are your skills?"}
@@ -118,7 +127,7 @@ async def test_run_turn_grounds_reply_with_retrieved_chunks():
 
     await agent.run_turn("conv-1", "What are your skills?")
 
-    sent_messages, _ = gateway.calls[0]
+    sent_messages, _model, _tools = gateway.calls[0]
     assert sent_messages[0]["role"] == "system"
     assert "Go, Python, and LLM agents." in sent_messages[0]["content"]
     assert sent_messages[-1] == {"role": "user", "content": "What are your skills?"}
@@ -132,7 +141,7 @@ async def test_run_turn_without_retriever_has_no_system_message():
 
     await agent.run_turn("conv-1", "hi")
 
-    sent_messages, _ = gateway.calls[0]
+    sent_messages, _model, _tools = gateway.calls[0]
     assert all(message["role"] != "system" for message in sent_messages)
 
 
@@ -144,5 +153,91 @@ async def test_run_turn_with_retriever_but_no_matches_has_no_system_message():
 
     await agent.run_turn("conv-1", "hi")
 
-    sent_messages, _ = gateway.calls[0]
+    sent_messages, _model, _tools = gateway.calls[0]
     assert all(message["role"] != "system" for message in sent_messages)
+
+
+class FakeToolExecutor:
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    def list_tools(self) -> list[dict]:
+        return [{"type": "function", "function": {"name": "get_resume", "parameters": {}}}]
+
+    async def execute(self, tool_name: str, args: dict) -> str:
+        self.calls.append((tool_name, args))
+        if tool_name != "get_resume":
+            raise ValueError(f"Unknown tool: {tool_name}")
+        return "Resume: Applied AI Engineer with a focus on LLM agents."
+
+
+def _tool_call_response(call_id: str, name: str, arguments: str = "{}") -> dict:
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{"id": call_id, "function": {"name": name, "arguments": arguments}}],
+    }
+
+
+@pytest.mark.asyncio
+async def test_run_turn_executes_tool_call_and_resolves_with_second_response():
+    gateway = FakeGatewayClient(
+        responses=[
+            _tool_call_response("call-1", "get_resume"),
+            {
+                "role": "assistant",
+                "content": "Here's a summary of my resume.",
+                "tool_calls": None,
+            },
+        ]
+    )
+    tools = FakeToolExecutor()
+    agent = AgentCore(gateway=gateway, tools=tools)
+
+    result = await agent.run_turn("conv-1", "Can I see your resume?")
+
+    assert result.text == "Here's a summary of my resume."
+    assert tools.calls == [("get_resume", {})]
+
+    second_call_messages, _model, _tools_schema = gateway.calls[1]
+    tool_result_messages = [m for m in second_call_messages if m.get("role") == "tool"]
+    assert len(tool_result_messages) == 1
+    assert tool_result_messages[0]["tool_call_id"] == "call-1"
+    assert "Applied AI Engineer" in tool_result_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_run_turn_unknown_tool_call_does_not_crash():
+    gateway = FakeGatewayClient(
+        responses=[
+            _tool_call_response("call-1", "delete_everything"),
+            {"role": "assistant", "content": "Sorry, I can't help with that.", "tool_calls": None},
+        ]
+    )
+    tools = FakeToolExecutor()
+    agent = AgentCore(gateway=gateway, tools=tools)
+
+    result = await agent.run_turn("conv-1", "do something weird")
+
+    assert result.text == "Sorry, I can't help with that."
+    second_call_messages, _model, _tools_schema = gateway.calls[1]
+    tool_result_messages = [m for m in second_call_messages if m.get("role") == "tool"]
+    assert "Error" in tool_result_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_run_turn_tool_call_without_tool_executor_returns_error_result():
+    gateway = FakeGatewayClient(
+        responses=[
+            _tool_call_response("call-1", "get_resume"),
+            {"role": "assistant", "content": "Fallback reply.", "tool_calls": None},
+        ]
+    )
+    agent = AgentCore(gateway=gateway, tools=None)
+
+    result = await agent.run_turn("conv-1", "Can I see your resume?")
+
+    assert result.text == "Fallback reply."
+    second_call_messages, _model, _tools_schema = gateway.calls[1]
+    tool_result_messages = [m for m in second_call_messages if m.get("role") == "tool"]
+    assert "Error" in tool_result_messages[0]["content"]

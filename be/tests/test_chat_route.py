@@ -11,8 +11,14 @@ TEST_SECRET = "test-secret"
 
 
 class FakeGatewayClient:
-    async def chat(self, messages: list[dict], model: str = "cheap") -> str:
-        return "I have experience with Go, Python, and building LLM agents."
+    async def chat_completion(
+        self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
+    ) -> dict:
+        return {
+            "role": "assistant",
+            "content": "I have experience with Go, Python, and building LLM agents.",
+            "tool_calls": None,
+        }
 
 
 @pytest.fixture(autouse=True)

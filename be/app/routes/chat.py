@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.agent.core import AgentCore
-from app.agent.factory import build_conversation_store, build_rag_retriever
+from app.agent.factory import (
+    build_conversation_store,
+    build_rag_retriever,
+    build_tool_executor,
+)
 from app.agent.gateway import LLMGatewayClient
 from app.agent.store import ConversationStore
 from app.auth import AuthenticatedUser, verify_jwt
@@ -12,7 +16,8 @@ router = APIRouter()
 _store = build_conversation_store()
 _gateway = LLMGatewayClient()
 _retriever = build_rag_retriever(_gateway)
-_agent = AgentCore(gateway=_gateway, store=_store, retriever=_retriever)
+_tools = build_tool_executor()
+_agent = AgentCore(gateway=_gateway, store=_store, retriever=_retriever, tools=_tools)
 
 
 class ChatRequest(BaseModel):

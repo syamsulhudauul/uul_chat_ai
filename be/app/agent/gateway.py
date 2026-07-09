@@ -15,16 +15,25 @@ class LLMGatewayClient:
         self.base_url = base_url or settings.litellm_base_url
         self.api_key = api_key or settings.litellm_api_key
 
-    async def chat(self, messages: list[dict], model: str = "cheap") -> str:
+    async def chat_completion(
+        self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
+    ) -> dict:
+        """Returns the raw assistant message dict (content + optional tool_calls)
+        so callers can drive a tool-calling loop.
+        """
+        payload: dict = {"model": model, "messages": messages}
+        if tools:
+            payload["tools"] = tools
+
         async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
             response = await client.post(
                 "/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "messages": messages},
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            return data["choices"][0]["message"]
 
     async def embed(self, text: str, model: str = "embeddings") -> list[float]:
         async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
