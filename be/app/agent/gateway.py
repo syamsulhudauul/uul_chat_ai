@@ -1,6 +1,24 @@
+import io
+import wave
+
 import httpx
 
 from app.config import settings
+
+
+def _pcm16_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int = 1) -> bytes:
+    """Gemini TTS returns raw headerless PCM16 — wrap it in a WAV container
+    so browsers can play it. Assumes the configured TTS backend outputs
+    PCM16; a future non-Gemini TTS provider that returns an already
+    encoded format (e.g. OpenAI's mp3) would need this skipped instead.
+    """
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(pcm_bytes)
+    return buffer.getvalue()
 
 
 class LLMGatewayClient:
@@ -47,7 +65,7 @@ class LLMGatewayClient:
             return data["data"][0]["embedding"]
 
     async def transcribe(
-        self, audio_bytes: bytes, filename: str = "audio.webm", model: str = "whisper"
+        self, audio_bytes: bytes, filename: str = "audio.webm", model: str = "stt"
     ) -> str:
         async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
             response = await client.post(
@@ -59,7 +77,7 @@ class LLMGatewayClient:
             response.raise_for_status()
             return response.json()["text"]
 
-    async def speak(self, text: str, model: str = "tts", voice: str = "alloy") -> bytes:
+    async def speak(self, text: str, model: str = "tts", voice: str = "Kore") -> bytes:
         async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
             response = await client.post(
                 "/audio/speech",
@@ -67,4 +85,4 @@ class LLMGatewayClient:
                 json={"model": model, "input": text, "voice": voice},
             )
             response.raise_for_status()
-            return response.content
+            return _pcm16_to_wav(response.content)

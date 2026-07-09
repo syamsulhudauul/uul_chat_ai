@@ -69,7 +69,7 @@ export function VoiceWindow() {
         { role: "assistant", content: result.reply },
       ]);
 
-      const audio = new Audio(`data:audio/mpeg;base64,${result.audio_base64}`);
+      const audio = new Audio(`data:audio/wav;base64,${result.audio_base64}`);
       void audio.play();
     } catch {
       setError("Something went wrong processing that recording. Please try again.");

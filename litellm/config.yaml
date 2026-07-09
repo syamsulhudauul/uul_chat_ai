@@ -11,18 +11,25 @@ model_list:
 
   - model_name: embeddings
     litellm_params:
-      model: openai/text-embedding-3-small
-      api_key: os.environ/OPENAI_API_KEY
+      model: voyage/voyage-3
+      api_key: os.environ/VOYAGE_API_KEY
 
-  - model_name: whisper
+  # Gemini has no dedicated Whisper-style transcription endpoint — this
+  # relies on LiteLLM's gemini transcription support (listed as a
+  # supported provider for /audio/transcriptions, but undocumented with
+  # a worked example as of writing). Verify against a real GEMINI_API_KEY
+  # before relying on it; fall back to openai/whisper-1 if it errors.
+  - model_name: stt
     litellm_params:
-      model: openai/whisper-1
-      api_key: os.environ/OPENAI_API_KEY
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
 
+  # Gemini TTS only outputs raw PCM16 (24kHz, mono) — the BE wraps it in
+  # a WAV header before handing it to the FE (see gateway.py speak()).
   - model_name: tts
     litellm_params:
-      model: openai/tts-1
-      api_key: os.environ/OPENAI_API_KEY
+      model: gemini/gemini-2.5-flash-preview-tts
+      api_key: os.environ/GEMINI_API_KEY
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

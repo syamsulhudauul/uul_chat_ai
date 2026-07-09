@@ -26,7 +26,7 @@ create index if not exists messages_conversation_id_idx on public.messages (conv
 create table if not exists public.knowledge_chunks (
     id uuid primary key default gen_random_uuid(),
     content text not null,
-    embedding vector(1536) not null,
+    embedding vector(1024) not null, -- voyage-3 default output dimension
     source_doc text not null,
     metadata jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now()

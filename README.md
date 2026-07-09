@@ -8,7 +8,7 @@ PRD: https://github.com/syamsulhudauul/uul_chat_ai/issues/1
 
 - `fe/` — Next.js 14 + Tailwind + shadcn/ui, Supabase Auth (Google) for login
 - `be/` — FastAPI, RAG + tool-calling agent core
-- `litellm/` — self-hosted LiteLLM gateway (OpenRouter for chat, OpenAI for STT/TTS/embeddings)
+- `litellm/` — self-hosted LiteLLM gateway (OpenRouter for chat, Voyage AI for embeddings, Gemini for STT/TTS)
 - Supabase — Postgres + pgvector + Auth
 - Deploy — Docker Compose on a self-hosted VPS behind Caddy, GitHub Actions CI/CD (build → GHCR → SSH deploy)
 
@@ -31,4 +31,4 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env` and fill in Supabase/OpenRouter/OpenAI credentials.
+Copy `.env.example` to `.env` and fill in Supabase/OpenRouter/Voyage/Gemini credentials.

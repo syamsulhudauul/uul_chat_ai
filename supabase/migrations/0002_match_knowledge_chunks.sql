@@ -1,6 +1,6 @@
 -- RPC used by RAGRetriever via PostgREST (/rest/v1/rpc/match_knowledge_chunks).
 create or replace function match_knowledge_chunks(
-    query_embedding vector(1536),
+    query_embedding vector(1024), -- voyage-3 default output dimension
     match_count int default 5
 )
 returns table (
