@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import AuthenticatedUser, verify_jwt
 from app.config import settings
 
 app = FastAPI(title="uul_chat_ai backend")
@@ -17,3 +18,8 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/me")
+def me(user: AuthenticatedUser = Depends(verify_jwt)) -> dict:
+    return {"user_id": user.user_id, "email": user.email}
