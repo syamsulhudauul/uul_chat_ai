@@ -25,3 +25,14 @@ class LLMGatewayClient:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
+
+    async def embed(self, text: str, model: str = "embeddings") -> list[float]:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
+            response = await client.post(
+                "/embeddings",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={"model": model, "input": text},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["data"][0]["embedding"]

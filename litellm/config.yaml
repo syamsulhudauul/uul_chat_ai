@@ -4,5 +4,10 @@ model_list:
       model: openrouter/google/gemini-2.5-flash
       api_key: os.environ/OPENROUTER_API_KEY
 
+  - model_name: embeddings
+    litellm_params:
+      model: openai/text-embedding-3-small
+      api_key: os.environ/OPENAI_API_KEY
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

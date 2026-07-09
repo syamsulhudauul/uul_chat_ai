@@ -96,3 +96,53 @@ async def test_run_turn_persists_both_user_and_assistant_messages():
         ("conv-1", "user", "hello", None),
         ("conv-1", "assistant", "my reply", "cheap"),
     ]
+
+
+class FakeRetriever:
+    def __init__(self, chunks: list[dict]):
+        self._chunks = chunks
+        self.queried: list[str] = []
+
+    async def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
+        self.queried.append(query)
+        return self._chunks
+
+
+@pytest.mark.asyncio
+async def test_run_turn_grounds_reply_with_retrieved_chunks():
+    gateway = FakeGatewayClient()
+    retriever = FakeRetriever(
+        [{"source_doc": "skills.md", "content": "Go, Python, and LLM agents."}]
+    )
+    agent = AgentCore(gateway=gateway, retriever=retriever)
+
+    await agent.run_turn("conv-1", "What are your skills?")
+
+    sent_messages, _ = gateway.calls[0]
+    assert sent_messages[0]["role"] == "system"
+    assert "Go, Python, and LLM agents." in sent_messages[0]["content"]
+    assert sent_messages[-1] == {"role": "user", "content": "What are your skills?"}
+    assert retriever.queried == ["What are your skills?"]
+
+
+@pytest.mark.asyncio
+async def test_run_turn_without_retriever_has_no_system_message():
+    gateway = FakeGatewayClient()
+    agent = AgentCore(gateway=gateway)
+
+    await agent.run_turn("conv-1", "hi")
+
+    sent_messages, _ = gateway.calls[0]
+    assert all(message["role"] != "system" for message in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_run_turn_with_retriever_but_no_matches_has_no_system_message():
+    gateway = FakeGatewayClient()
+    retriever = FakeRetriever([])
+    agent = AgentCore(gateway=gateway, retriever=retriever)
+
+    await agent.run_turn("conv-1", "hi")
+
+    sent_messages, _ = gateway.calls[0]
+    assert all(message["role"] != "system" for message in sent_messages)
