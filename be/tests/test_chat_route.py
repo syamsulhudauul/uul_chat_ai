@@ -60,3 +60,14 @@ def test_chat_reuses_provided_conversation_id():
         headers=_auth_header(),
     )
     assert response.json()["conversation_id"] == "conv-abc"
+
+
+def test_latest_conversation_requires_auth():
+    response = client.get("/conversations/latest")
+    assert response.status_code == 401
+
+
+def test_latest_conversation_returns_none_when_no_history():
+    response = client.get("/conversations/latest", headers=_auth_header())
+    assert response.status_code == 200
+    assert response.json() == {"conversation_id": None, "messages": []}

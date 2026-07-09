@@ -1,3 +1,4 @@
+import uuid
 from typing import Protocol
 
 
@@ -5,9 +6,13 @@ class ConversationStore(Protocol):
     """Persistence boundary for conversation history.
 
     Agent Core depends on this interface, not a concrete implementation —
-    #5 swaps NullConversationStore for a real Supabase-backed one without
-    touching Agent Core.
+    SupabaseConversationStore (real persistence) and NullConversationStore
+    (no-op) are interchangeable behind it.
     """
+
+    async def create_conversation(self, user_id: str, mode: str) -> str: ...
+
+    async def get_latest_conversation(self, user_id: str) -> str | None: ...
 
     async def get_history(self, conversation_id: str) -> list[dict]: ...
 
@@ -17,7 +22,13 @@ class ConversationStore(Protocol):
 
 
 class NullConversationStore:
-    """No-op store used until #5 wires up real persistence."""
+    """No-op store used when Supabase isn't configured (e.g. local dev without secrets)."""
+
+    async def create_conversation(self, user_id: str, mode: str) -> str:
+        return str(uuid.uuid4())
+
+    async def get_latest_conversation(self, user_id: str) -> str | None:
+        return None
 
     async def get_history(self, conversation_id: str) -> list[dict]:
         return []

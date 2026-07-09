@@ -1,15 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { sendChatMessage } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { getLatestConversation, sendChatMessage } from "@/lib/api";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 export function ChatWindow() {
-  const [conversationId] = useState(() => crypto.randomUUID());
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    getLatestConversation()
+      .then((res) => {
+        setConversationId(res.conversation_id);
+        setMessages(res.messages);
+      })
+      .catch(() => {
+        // No prior conversation yet, or the BE isn't reachable — start fresh.
+      })
+      .finally(() => setLoaded(true));
+  }, []);
 
   const send = async () => {
     const text = input.trim();
@@ -20,7 +33,8 @@ export function ChatWindow() {
     setSending(true);
 
     try {
-      const { reply } = await sendChatMessage(conversationId, text);
+      const { reply, conversation_id } = await sendChatMessage(conversationId, text);
+      setConversationId(conversation_id);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [
@@ -35,7 +49,7 @@ export function ChatWindow() {
   return (
     <div className="flex w-full max-w-lg flex-col gap-4">
       <div className="flex min-h-[320px] flex-col gap-2 rounded-md border p-4">
-        {messages.length === 0 && (
+        {loaded && messages.length === 0 && (
           <p className="text-sm text-muted-foreground">
             Ask about my skills, experience, or projects.
           </p>
