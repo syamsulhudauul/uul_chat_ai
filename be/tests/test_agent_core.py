@@ -241,3 +241,70 @@ async def test_run_turn_tool_call_without_tool_executor_returns_error_result():
     second_call_messages, _model, _tools_schema = gateway.calls[1]
     tool_result_messages = [m for m in second_call_messages if m.get("role") == "tool"]
     assert "Error" in tool_result_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_run_turn_simple_question_uses_cheap_model():
+    gateway = FakeGatewayClient(reply="Go and Python are my main languages.")
+    agent = AgentCore(gateway=gateway)
+
+    result = await agent.run_turn("conv-1", "What languages do you use?")
+
+    assert result.model_used == "cheap"
+    first_call_model = gateway.calls[0][1]
+    assert first_call_model == "cheap"
+
+
+@pytest.mark.asyncio
+async def test_run_turn_deep_reasoning_escalates_to_strong_model():
+    gateway = FakeGatewayClient(
+        responses=[
+            _tool_call_response("call-1", "deep_reasoning"),
+            {
+                "role": "assistant",
+                "content": "Comparing both roles, the throughline is...",
+                "tool_calls": None,
+            },
+        ]
+    )
+    agent = AgentCore(gateway=gateway)
+
+    result = await agent.run_turn(
+        "conv-1", "Compare your experience across your last two roles."
+    )
+
+    assert result.text == "Comparing both roles, the throughline is..."
+    assert result.model_used == "strong"
+
+    first_call_model = gateway.calls[0][1]
+    second_call_model = gateway.calls[1][1]
+    assert first_call_model == "cheap"
+    assert second_call_model == "strong"
+
+
+@pytest.mark.asyncio
+async def test_run_turn_deep_reasoning_persists_strong_model_used():
+    gateway = FakeGatewayClient(
+        responses=[
+            _tool_call_response("call-1", "deep_reasoning"),
+            {"role": "assistant", "content": "Synthesized answer.", "tool_calls": None},
+        ]
+    )
+    store = FakeStore(history=[])
+    agent = AgentCore(gateway=gateway, store=store)
+
+    await agent.run_turn("conv-1", "Compare your two roles.")
+
+    assert store.appended[-1] == ("conv-1", "assistant", "Synthesized answer.", "strong")
+
+
+@pytest.mark.asyncio
+async def test_deep_reasoning_tool_is_always_offered():
+    gateway = FakeGatewayClient()
+    agent = AgentCore(gateway=gateway, tools=None)
+
+    await agent.run_turn("conv-1", "hi")
+
+    _messages, _model, tool_schemas = gateway.calls[0]
+    tool_names = {schema["function"]["name"] for schema in tool_schemas}
+    assert "deep_reasoning" in tool_names

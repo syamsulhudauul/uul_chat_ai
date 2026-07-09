@@ -14,6 +14,20 @@ GROUNDING_INSTRUCTIONS = (
 
 MAX_TOOL_ITERATIONS = 3
 
+DEEP_REASONING_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "deep_reasoning",
+        "description": (
+            "Use for synthesis or comparison questions that need careful reasoning "
+            "across multiple pieces of context (e.g. comparing experience across two "
+            "roles), rather than a simple factual lookup. Switches to a stronger model "
+            "for the rest of this turn."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+}
+
 
 @dataclass
 class AgentReply:
@@ -32,10 +46,7 @@ class ToolExecutorProtocol(Protocol):
 
 
 class AgentCore:
-    """Transport-agnostic reasoning core — chat and voice both call run_turn().
-
-    Model-tier escalation is added in #8 without changing this interface.
-    """
+    """Transport-agnostic reasoning core — chat and voice both call run_turn()."""
 
     def __init__(
         self,
@@ -66,7 +77,9 @@ class AgentCore:
         messages.append({"role": "user", "content": user_message})
 
         model = "cheap"
-        tool_schemas = self.tools.list_tools() if self.tools else None
+        tool_schemas = (self.tools.list_tools() if self.tools else []) + [
+            DEEP_REASONING_TOOL_SCHEMA
+        ]
 
         reply_text = ""
         for _ in range(MAX_TOOL_ITERATIONS):
@@ -85,12 +98,16 @@ class AgentCore:
                 raw_args = call["function"].get("arguments") or "{}"
                 args = json.loads(raw_args) if raw_args else {}
 
-                try:
-                    if self.tools is None:
-                        raise ValueError(f"No tools available to handle: {name}")
-                    result = await self.tools.execute(name, args)
-                except ValueError as exc:
-                    result = f"Error: {exc}"
+                if name == "deep_reasoning":
+                    model = "strong"
+                    result = "Switching to deeper reasoning for this response."
+                else:
+                    try:
+                        if self.tools is None:
+                            raise ValueError(f"No tools available to handle: {name}")
+                        result = await self.tools.execute(name, args)
+                    except ValueError as exc:
+                        result = f"Error: {exc}"
 
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": result}
