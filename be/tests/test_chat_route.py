@@ -1,13 +1,10 @@
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from app.agent.core import AgentCore
-from app.config import settings
 from app.main import app
 from app.routes.chat import get_agent_core
-
-TEST_SECRET = "test-secret"
+from tests.auth_helpers import make_token
 
 
 class FakeGatewayClient:
@@ -22,27 +19,19 @@ class FakeGatewayClient:
 
 
 @pytest.fixture(autouse=True)
-def _set_jwt_secret(monkeypatch):
-    monkeypatch.setattr(settings, "supabase_jwt_secret", TEST_SECRET)
-
-
-@pytest.fixture(autouse=True)
 def _override_agent_core():
     app.dependency_overrides[get_agent_core] = lambda: AgentCore(gateway=FakeGatewayClient())
     yield
     app.dependency_overrides.pop(get_agent_core, None)
 
 
-client = TestClient(app)
-
-
-def _auth_header():
-    token = jwt.encode(
-        {"sub": "user-123", "email": "recruiter@example.com", "aud": "authenticated"},
-        TEST_SECRET,
-        algorithm="HS256",
-    )
+@pytest.fixture()
+def auth_header(jwks_private_key):
+    token = make_token(jwks_private_key, sub="user-123", email="recruiter@example.com")
     return {"Authorization": f"Bearer {token}"}
+
+
+client = TestClient(app)
 
 
 def test_chat_requires_auth():
@@ -50,8 +39,10 @@ def test_chat_requires_auth():
     assert response.status_code == 401
 
 
-def test_chat_returns_reply_for_authenticated_user():
-    response = client.post("/chat", json={"message": "What's your experience?"}, headers=_auth_header())
+def test_chat_returns_reply_for_authenticated_user(auth_header):
+    response = client.post(
+        "/chat", json={"message": "What's your experience?"}, headers=auth_header
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["reply"] == "I have experience with Go, Python, and building LLM agents."
@@ -59,11 +50,11 @@ def test_chat_returns_reply_for_authenticated_user():
     assert body["conversation_id"]
 
 
-def test_chat_reuses_provided_conversation_id():
+def test_chat_reuses_provided_conversation_id(auth_header):
     response = client.post(
         "/chat",
         json={"conversation_id": "conv-abc", "message": "hi"},
-        headers=_auth_header(),
+        headers=auth_header,
     )
     assert response.json()["conversation_id"] == "conv-abc"
 
@@ -73,7 +64,7 @@ def test_latest_conversation_requires_auth():
     assert response.status_code == 401
 
 
-def test_latest_conversation_returns_none_when_no_history():
-    response = client.get("/conversations/latest", headers=_auth_header())
+def test_latest_conversation_returns_none_when_no_history(auth_header):
+    response = client.get("/conversations/latest", headers=auth_header)
     assert response.status_code == 200
     assert response.json() == {"conversation_id": None, "messages": []}

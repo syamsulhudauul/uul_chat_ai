@@ -24,9 +24,9 @@ class VoicePipeline:
         self.agent = agent
 
     async def run_turn(
-        self, conversation_id: str, audio_bytes: bytes, filename: str = "audio.webm"
+        self, conversation_id: str, audio_bytes: bytes, audio_format: str = "wav"
     ) -> VoiceReply:
-        transcript = await self.gateway.transcribe(audio_bytes, filename=filename)
+        transcript = await self.gateway.transcribe(audio_bytes, audio_format=audio_format)
         reply = await self.agent.run_turn(conversation_id, transcript)
         audio = await self.gateway.speak(reply.text)
         return VoiceReply(transcript=transcript, reply=reply, audio=audio)

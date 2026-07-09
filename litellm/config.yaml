@@ -14,18 +14,13 @@ model_list:
       model: voyage/voyage-3
       api_key: os.environ/VOYAGE_API_KEY
 
-  # Gemini has no dedicated Whisper-style transcription endpoint — this
-  # relies on LiteLLM's gemini transcription support (listed as a
-  # supported provider for /audio/transcriptions, but undocumented with
-  # a worked example as of writing). Verify against a real GEMINI_API_KEY
-  # before relying on it; fall back to openai/whisper-1 if it errors.
-  - model_name: stt
-    litellm_params:
-      model: gemini/gemini-2.5-flash
-      api_key: os.environ/GEMINI_API_KEY
+  # No separate STT entry: confirmed live that LiteLLM's /audio/transcriptions
+  # doesn't support gemini ("Unmapped provider passed in"). Transcription
+  # instead goes through the "cheap" chat model above with multimodal
+  # audio input (see gateway.py transcribe()), which works.
 
-  # Gemini TTS only outputs raw PCM16 (24kHz, mono) — the BE wraps it in
-  # a WAV header before handing it to the FE (see gateway.py speak()).
+  # Confirmed live: this already returns a properly headered WAV file,
+  # not raw PCM.
   - model_name: tts
     litellm_params:
       model: gemini/gemini-2.5-flash-preview-tts

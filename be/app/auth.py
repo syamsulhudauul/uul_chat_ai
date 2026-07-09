@@ -6,6 +6,19 @@ from app.config import settings
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
+_jwks_client: jwt.PyJWKClient | None = None
+
+
+def _get_jwks_client() -> jwt.PyJWKClient:
+    """Lazily built + cached — Supabase's new API key system signs JWTs
+    asymmetrically (ES256), verified against the project's JWKS endpoint
+    rather than a shared HS256 secret.
+    """
+    global _jwks_client
+    if _jwks_client is None:
+        _jwks_client = jwt.PyJWKClient(settings.supabase_jwks_url, cache_keys=True)
+    return _jwks_client
+
 
 class AuthenticatedUser:
     def __init__(self, user_id: str, email: str | None):
@@ -20,10 +33,11 @@ def verify_jwt(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing bearer token")
 
     try:
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(credentials.credentials)
         claims = jwt.decode(
             credentials.credentials,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
             audience="authenticated",
         )
     except jwt.PyJWTError as exc:

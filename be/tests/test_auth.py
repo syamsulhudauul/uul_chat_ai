@@ -1,23 +1,10 @@
-import jwt
-import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi.testclient import TestClient
 
-from app.config import settings
 from app.main import app
+from tests.auth_helpers import make_token
 
 client = TestClient(app)
-
-TEST_SECRET = "test-secret"
-
-
-@pytest.fixture(autouse=True)
-def _set_jwt_secret(monkeypatch):
-    monkeypatch.setattr(settings, "supabase_jwt_secret", TEST_SECRET)
-
-
-def _make_token(sub: str = "user-123", email: str = "recruiter@example.com", **overrides):
-    payload = {"sub": sub, "email": email, "aud": "authenticated", **overrides}
-    return jwt.encode(payload, TEST_SECRET, algorithm="HS256")
 
 
 def test_me_requires_bearer_token():
@@ -30,16 +17,19 @@ def test_me_rejects_invalid_token():
     assert response.status_code == 401
 
 
-def test_me_rejects_token_signed_with_wrong_secret():
-    bad_token = jwt.encode(
-        {"sub": "user-123", "aud": "authenticated"}, "wrong-secret", algorithm="HS256"
-    )
+def test_me_rejects_token_signed_with_wrong_key(jwks_private_key):
+    wrong_key = ec.generate_private_key(ec.SECP256R1())
+    bad_token = make_token(wrong_key, sub="user-123")
+
     response = client.get("/me", headers={"Authorization": f"Bearer {bad_token}"})
+
     assert response.status_code == 401
 
 
-def test_me_returns_user_id_and_email_for_valid_token():
-    token = _make_token(sub="user-123", email="recruiter@example.com")
+def test_me_returns_user_id_and_email_for_valid_token(jwks_private_key):
+    token = make_token(jwks_private_key, sub="user-123", email="recruiter@example.com")
+
     response = client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
     assert response.status_code == 200
     assert response.json() == {"user_id": "user-123", "email": "recruiter@example.com"}

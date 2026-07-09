@@ -10,15 +10,15 @@ from app.config import settings
 
 
 def _supabase_configured() -> bool:
-    return bool(settings.supabase_url and settings.supabase_service_role_key)
+    return bool(settings.supabase_url and settings.supabase_secret_key)
 
 
 def _supabase_rest_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=settings.supabase_url,
         headers={
-            "apikey": settings.supabase_service_role_key,
-            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_secret_key,
+            "Authorization": f"Bearer {settings.supabase_secret_key}",
             "Content-Type": "application/json",
         },
         timeout=30,

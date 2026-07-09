@@ -36,7 +36,11 @@ async def voice(
     conv_id = conversation_id or await store.create_conversation(user.user_id, "voice")
     audio_bytes = await file.read()
 
-    result = await pipeline.run_turn(conv_id, audio_bytes, filename=file.filename or "audio.webm")
+    # TODO: the FE currently uploads whatever MediaRecorder produces
+    # (typically webm), which Gemini's audio input does NOT accept
+    # (wav/mp3/aiff/aac/ogg/flac only) — this needs either client-side
+    # re-encoding or a server-side transcode step before it's correct.
+    result = await pipeline.run_turn(conv_id, audio_bytes, audio_format="wav")
 
     return VoiceResponse(
         conversation_id=conv_id,

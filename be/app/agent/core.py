@@ -65,7 +65,12 @@ class AgentCore:
         messages = list(history)
 
         if self.retriever is not None:
-            chunks = await self.retriever.retrieve(user_message)
+            try:
+                chunks = await self.retriever.retrieve(user_message)
+            except Exception:
+                # A flaky/misconfigured embeddings provider shouldn't 500 the
+                # whole turn — degrade to an ungrounded reply instead.
+                chunks = []
             if chunks:
                 context = "\n\n".join(
                     f"[{chunk['source_doc']}] {chunk['content']}" for chunk in chunks

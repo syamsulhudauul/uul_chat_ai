@@ -117,6 +117,11 @@ class FakeRetriever:
         return self._chunks
 
 
+class FailingRetriever:
+    async def retrieve(self, query: str, top_k: int = 5) -> list[dict]:
+        raise RuntimeError("embeddings provider unreachable")
+
+
 @pytest.mark.asyncio
 async def test_run_turn_grounds_reply_with_retrieved_chunks():
     gateway = FakeGatewayClient()
@@ -141,6 +146,18 @@ async def test_run_turn_without_retriever_has_no_system_message():
 
     await agent.run_turn("conv-1", "hi")
 
+    sent_messages, _model, _tools = gateway.calls[0]
+    assert all(message["role"] != "system" for message in sent_messages)
+
+
+@pytest.mark.asyncio
+async def test_run_turn_degrades_gracefully_when_retriever_raises():
+    gateway = FakeGatewayClient(reply="I can still answer, just not grounded this time.")
+    agent = AgentCore(gateway=gateway, retriever=FailingRetriever())
+
+    result = await agent.run_turn("conv-1", "What are your skills?")
+
+    assert result.text == "I can still answer, just not grounded this time."
     sent_messages, _model, _tools = gateway.calls[0]
     assert all(message["role"] != "system" for message in sent_messages)
 

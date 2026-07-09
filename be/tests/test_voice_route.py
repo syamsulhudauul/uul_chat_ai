@@ -1,16 +1,13 @@
 import base64
 
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
 from app.agent.core import AgentReply
 from app.agent.voice import VoiceReply
-from app.config import settings
 from app.main import app
 from app.routes.voice import get_voice_pipeline
-
-TEST_SECRET = "test-secret"
+from tests.auth_helpers import make_token
 
 
 class FakeStore:
@@ -32,17 +29,12 @@ class FakeStore:
 
 
 class FakeVoicePipeline:
-    async def run_turn(self, conversation_id: str, audio_bytes: bytes, filename: str = "audio.webm"):
+    async def run_turn(self, conversation_id: str, audio_bytes: bytes, audio_format: str = "wav"):
         return VoiceReply(
             transcript="What are your skills?",
             reply=AgentReply(text="Go, Python, and LLM agents.", model_used="cheap"),
             audio=b"fake-mp3-bytes",
         )
-
-
-@pytest.fixture(autouse=True)
-def _set_jwt_secret(monkeypatch):
-    monkeypatch.setattr(settings, "supabase_jwt_secret", TEST_SECRET)
 
 
 @pytest.fixture()
@@ -61,16 +53,13 @@ def _override_dependencies(fake_store):
     app.dependency_overrides.pop(get_voice_pipeline, None)
 
 
-client = TestClient(app)
-
-
-def _auth_header():
-    token = jwt.encode(
-        {"sub": "user-123", "email": "recruiter@example.com", "aud": "authenticated"},
-        TEST_SECRET,
-        algorithm="HS256",
-    )
+@pytest.fixture()
+def auth_header(jwks_private_key):
+    token = make_token(jwks_private_key, sub="user-123", email="recruiter@example.com")
     return {"Authorization": f"Bearer {token}"}
+
+
+client = TestClient(app)
 
 
 def test_voice_requires_auth():
@@ -78,11 +67,11 @@ def test_voice_requires_auth():
     assert response.status_code == 401
 
 
-def test_voice_returns_transcript_reply_and_audio(fake_store):
+def test_voice_returns_transcript_reply_and_audio(fake_store, auth_header):
     response = client.post(
         "/voice",
         files={"file": ("recording.webm", b"audio-bytes", "audio/webm")},
-        headers=_auth_header(),
+        headers=auth_header,
     )
 
     assert response.status_code == 200
@@ -93,22 +82,22 @@ def test_voice_returns_transcript_reply_and_audio(fake_store):
     assert base64.b64decode(body["audio_base64"]) == b"fake-mp3-bytes"
 
 
-def test_voice_creates_a_voice_mode_conversation_when_none_provided(fake_store):
+def test_voice_creates_a_voice_mode_conversation_when_none_provided(fake_store, auth_header):
     client.post(
         "/voice",
         files={"file": ("recording.webm", b"audio-bytes", "audio/webm")},
-        headers=_auth_header(),
+        headers=auth_header,
     )
 
     assert fake_store.created == [("user-123", "voice")]
 
 
-def test_voice_reuses_provided_conversation_id(fake_store):
+def test_voice_reuses_provided_conversation_id(fake_store, auth_header):
     response = client.post(
         "/voice",
         files={"file": ("recording.webm", b"audio-bytes", "audio/webm")},
         data={"conversation_id": "conv-existing"},
-        headers=_auth_header(),
+        headers=auth_header,
     )
 
     assert response.json()["conversation_id"] == "conv-existing"

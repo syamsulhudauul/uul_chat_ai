@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
-      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${SUPABASE_PUBLISHABLE_KEY}
       - NEXT_PUBLIC_API_BASE_URL=${API_BASE_URL}
 
   be:
@@ -16,8 +16,8 @@ services:
     restart: unless-stopped
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
       - LITELLM_BASE_URL=http://litellm:4000
       - LITELLM_API_KEY=${LITELLM_API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS}
@@ -27,6 +27,8 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     restart: unless-stopped
+    ports:
+      - "4000:4000"
     volumes:
       - ./litellm/config.yaml:/app/config.yaml
     command: ["--config", "/app/config.yaml", "--port", "4000"]

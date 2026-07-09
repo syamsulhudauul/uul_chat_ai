@@ -1,24 +1,8 @@
-import io
-import wave
+import base64
 
 import httpx
 
 from app.config import settings
-
-
-def _pcm16_to_wav(pcm_bytes: bytes, sample_rate: int = 24000, channels: int = 1) -> bytes:
-    """Gemini TTS returns raw headerless PCM16 — wrap it in a WAV container
-    so browsers can play it. Assumes the configured TTS backend outputs
-    PCM16; a future non-Gemini TTS provider that returns an already
-    encoded format (e.g. OpenAI's mp3) would need this skipped instead.
-    """
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm_bytes)
-    return buffer.getvalue()
 
 
 class LLMGatewayClient:
@@ -65,19 +49,43 @@ class LLMGatewayClient:
             return data["data"][0]["embedding"]
 
     async def transcribe(
-        self, audio_bytes: bytes, filename: str = "audio.webm", model: str = "stt"
+        self, audio_bytes: bytes, audio_format: str = "wav", model: str = "cheap"
     ) -> str:
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
-            response = await client.post(
-                "/audio/transcriptions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                data={"model": model},
-                files={"file": (filename, audio_bytes, "application/octet-stream")},
-            )
-            response.raise_for_status()
-            return response.json()["text"]
+        """Gemini has no working /audio/transcriptions route via LiteLLM
+        (confirmed live: raises "Unmapped provider passed in") — this goes
+        through the normal chat endpoint with multimodal audio input
+        instead, which does work. Gemini only accepts wav/mp3/aiff/aac/
+        ogg/flac input audio — the caller is responsible for handing this
+        bytes in one of those formats (NOT the browser's raw webm output).
+        """
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        message = await self.chat_completion(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Transcribe this audio verbatim. Respond with only the "
+                                "transcription, no commentary."
+                            ),
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {"data": audio_b64, "format": audio_format},
+                        },
+                    ],
+                }
+            ],
+            model=model,
+        )
+        return message.get("content") or ""
 
     async def speak(self, text: str, model: str = "tts", voice: str = "Kore") -> bytes:
+        """LiteLLM's Gemini TTS route already returns a properly headered
+        WAV file (confirmed live), not raw PCM — no wrapping needed here.
+        """
         async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
             response = await client.post(
                 "/audio/speech",
@@ -85,4 +93,4 @@ class LLMGatewayClient:
                 json={"model": model, "input": text, "voice": voice},
             )
             response.raise_for_status()
-            return _pcm16_to_wav(response.content)
+            return response.content
