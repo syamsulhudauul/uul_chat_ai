@@ -10,10 +10,14 @@ export function MessageList({
   messages,
   pending = false,
   emptyHint,
+  suggestions,
+  onSuggestionClick,
 }: {
   messages: Message[];
   pending?: boolean;
   emptyHint: string;
+  suggestions?: string[];
+  onSuggestionClick?: (question: string) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -24,7 +28,22 @@ export function MessageList({
   return (
     <div className="flex h-80 flex-col gap-3 overflow-y-auto p-4">
       {messages.length === 0 && !pending && (
-        <p className="m-auto max-w-xs text-center text-sm text-muted-foreground">{emptyHint}</p>
+        <div className="m-auto flex max-w-xs flex-col items-center gap-3 text-center">
+          <p className="text-sm text-muted-foreground">{emptyHint}</p>
+          {suggestions && suggestions.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {suggestions.map((question) => (
+                <button
+                  key={question}
+                  onClick={() => onSuggestionClick?.(question)}
+                  className="rounded-full border bg-background px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-muted"
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {messages.map((message, index) => (

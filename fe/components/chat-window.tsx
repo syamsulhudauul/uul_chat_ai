@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MessageList, type Message } from "@/components/message-list";
 
+const SUGGESTED_QUESTIONS = [
+  "What are your skills?",
+  "Tell me about your experience",
+  "What projects have you worked on?",
+  "How can I contact you?",
+];
+
 export function ChatWindow() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -25,8 +32,8 @@ export function ChatWindow() {
       });
   }, []);
 
-  const send = async () => {
-    const text = input.trim();
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
     if (!text || sending) return;
 
     setInput("");
@@ -52,7 +59,9 @@ export function ChatWindow() {
       <MessageList
         messages={messages}
         pending={sending}
-        emptyHint="Ask about my skills, experience, or projects."
+        emptyHint="Ask about my skills, experience, or projects — or tap a suggestion below."
+        suggestions={SUGGESTED_QUESTIONS}
+        onSuggestionClick={(question) => send(question)}
       />
       <CardContent className="flex gap-2 border-t bg-muted/30 p-3">
         <Input
@@ -62,7 +71,7 @@ export function ChatWindow() {
           placeholder="Ask about my skills, experience, projects…"
           disabled={sending}
         />
-        <Button onClick={send} disabled={sending} size="icon" aria-label="Send message">
+        <Button onClick={() => send()} disabled={sending} size="icon" aria-label="Send message">
           <Send className="h-4 w-4" />
         </Button>
       </CardContent>

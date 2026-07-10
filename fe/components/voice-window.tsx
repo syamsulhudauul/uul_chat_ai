@@ -83,7 +83,7 @@ export function VoiceWindow() {
       <MessageList
         messages={messages}
         pending={processing}
-        emptyHint="Hold the mic button and ask about my skills, experience, or projects."
+        emptyHint='Tap the mic and ask something like "What are your skills?" or "Tell me about your experience."'
       />
       <CardContent className="flex flex-col items-center gap-2 border-t bg-muted/30 p-4">
         {error && <p className="text-sm text-destructive">{error}</p>}
