@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.core import AgentCore
@@ -25,12 +28,6 @@ class ChatRequest(BaseModel):
     message: str
 
 
-class ChatResponse(BaseModel):
-    conversation_id: str
-    reply: str
-    model_used: str
-
-
 class LatestConversationResponse(BaseModel):
     conversation_id: str | None
     messages: list[dict]
@@ -44,20 +41,24 @@ def get_conversation_store() -> ConversationStore:
     return _store
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def chat(
     body: ChatRequest,
     user: AuthenticatedUser = Depends(verify_jwt),
     agent: AgentCore = Depends(get_agent_core),
     store: ConversationStore = Depends(get_conversation_store),
-) -> ChatResponse:
+) -> StreamingResponse:
     conversation_id = body.conversation_id or await store.create_conversation(
         user.user_id, "chat"
     )
-    reply = await agent.run_turn(conversation_id, body.message)
-    return ChatResponse(
-        conversation_id=conversation_id, reply=reply.text, model_used=reply.model_used
-    )
+
+    async def event_stream():
+        async for event in agent.run_turn_stream(conversation_id, body.message):
+            if event["type"] == "done":
+                event = {**event, "conversation_id": conversation_id}
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get("/conversations/latest", response_model=LatestConversationResponse)

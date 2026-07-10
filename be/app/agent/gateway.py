@@ -1,4 +1,6 @@
 import base64
+import json
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -41,6 +43,30 @@ class LLMGatewayClient:
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]
+
+    async def chat_completion_stream(
+        self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
+    ) -> AsyncIterator[dict]:
+        """Yields {"delta": {...}, "finish_reason": ...} per SSE chunk, in
+        arrival order — mirrors the OpenAI-compatible streaming chunk shape
+        (confirmed live against this gateway) so callers can accumulate
+        content/tool_calls deltas themselves.
+        """
+        payload: dict = {"model": model, "messages": messages, "stream": True}
+        if tools:
+            payload["tools"] = tools
+
+        async with self._client.stream("POST", "/chat/completions", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[len("data: ") :]
+                if data == "[DONE]":
+                    break
+                chunk = json.loads(data)
+                choice = chunk["choices"][0]
+                yield {"delta": choice.get("delta", {}), "finish_reason": choice.get("finish_reason")}
 
     async def embed(self, text: str, model: str = "embeddings") -> list[float]:
         response = await self._client.post(

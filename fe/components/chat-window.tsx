@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Send } from "lucide-react";
-import { getLatestConversation, sendChatMessage } from "@/lib/api";
+import { getLatestConversation, streamChatMessage } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [awaitingFirstToken, setAwaitingFirstToken] = useState(false);
 
   useEffect(() => {
     getLatestConversation("chat")
@@ -39,11 +40,27 @@ export function ChatWindow() {
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setSending(true);
+    setAwaitingFirstToken(true);
 
+    let assistantAdded = false;
     try {
-      const { reply, conversation_id } = await sendChatMessage(conversationId, text);
-      setConversationId(conversation_id);
-      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      for await (const event of streamChatMessage(conversationId, text)) {
+        if (event.type === "token") {
+          setAwaitingFirstToken(false);
+          setMessages((prev) => {
+            if (!assistantAdded) {
+              assistantAdded = true;
+              return [...prev, { role: "assistant", content: event.text }];
+            }
+            const next = [...prev];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { role: "assistant", content: last.content + event.text };
+            return next;
+          });
+        } else if (event.type === "done") {
+          setConversationId(event.conversation_id);
+        }
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -51,6 +68,7 @@ export function ChatWindow() {
       ]);
     } finally {
       setSending(false);
+      setAwaitingFirstToken(false);
     }
   };
 
@@ -58,7 +76,7 @@ export function ChatWindow() {
     <Card className="w-full max-w-lg overflow-hidden">
       <MessageList
         messages={messages}
-        pending={sending}
+        pending={awaitingFirstToken}
         emptyHint="Ask about my skills, experience, or projects — or tap a suggestion below."
         suggestions={SUGGESTED_QUESTIONS}
         onSuggestionClick={(question) => send(question)}

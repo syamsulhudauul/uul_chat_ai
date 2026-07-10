@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,14 +10,17 @@ from tests.auth_helpers import make_token
 
 
 class FakeGatewayClient:
-    async def chat_completion(
+    async def chat_completion_stream(
         self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
-    ) -> dict:
-        return {
-            "role": "assistant",
-            "content": "I have experience with Go, Python, and building LLM agents.",
-            "tool_calls": None,
+    ):
+        yield {
+            "delta": {
+                "role": "assistant",
+                "content": "I have experience with Go, Python, and building LLM agents.",
+            },
+            "finish_reason": None,
         }
+        yield {"delta": {}, "finish_reason": "stop"}
 
 
 @pytest.fixture(autouse=True)
@@ -34,20 +39,36 @@ def auth_header(jwks_private_key):
 client = TestClient(app)
 
 
+def _parse_sse_events(response_text: str) -> list[dict]:
+    events = []
+    for line in response_text.splitlines():
+        if line.startswith("data: "):
+            events.append(json.loads(line[len("data: ") :]))
+    return events
+
+
 def test_chat_requires_auth():
     response = client.post("/chat", json={"message": "hi"})
     assert response.status_code == 401
 
 
-def test_chat_returns_reply_for_authenticated_user(auth_header):
+def test_chat_streams_tokens_and_done_event_for_authenticated_user(auth_header):
     response = client.post(
         "/chat", json={"message": "What's your experience?"}, headers=auth_header
     )
     assert response.status_code == 200
-    body = response.json()
-    assert body["reply"] == "I have experience with Go, Python, and building LLM agents."
-    assert body["model_used"] == "cheap"
-    assert body["conversation_id"]
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    events = _parse_sse_events(response.text)
+    token_events = [e for e in events if e["type"] == "token"]
+    done_events = [e for e in events if e["type"] == "done"]
+
+    assert "".join(e["text"] for e in token_events) == (
+        "I have experience with Go, Python, and building LLM agents."
+    )
+    assert len(done_events) == 1
+    assert done_events[0]["model_used"] == "cheap"
+    assert done_events[0]["conversation_id"]
 
 
 def test_chat_reuses_provided_conversation_id(auth_header):
@@ -56,7 +77,9 @@ def test_chat_reuses_provided_conversation_id(auth_header):
         json={"conversation_id": "conv-abc", "message": "hi"},
         headers=auth_header,
     )
-    assert response.json()["conversation_id"] == "conv-abc"
+    events = _parse_sse_events(response.text)
+    done_events = [e for e in events if e["type"] == "done"]
+    assert done_events[0]["conversation_id"] == "conv-abc"
 
 
 def test_latest_conversation_requires_auth():

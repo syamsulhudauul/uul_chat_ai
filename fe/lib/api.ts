@@ -2,11 +2,9 @@ import { createClient } from "@/lib/supabase/client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-export type ChatResponse = {
-  conversation_id: string;
-  reply: string;
-  model_used: string;
-};
+export type ChatStreamEvent =
+  | { type: "token"; text: string }
+  | { type: "done"; model_used: string; text: string; conversation_id: string };
 
 export type ConversationHistoryMessage = {
   role: "user" | "assistant";
@@ -26,10 +24,10 @@ async function authHeader(): Promise<Record<string, string>> {
   return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
 }
 
-export async function sendChatMessage(
+export async function* streamChatMessage(
   conversationId: string | null,
   message: string
-): Promise<ChatResponse> {
+): AsyncGenerator<ChatStreamEvent> {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: "POST",
     headers: {
@@ -39,11 +37,28 @@ export async function sendChatMessage(
     body: JSON.stringify({ conversation_id: conversationId, message }),
   });
 
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     throw new Error(`Chat request failed with status ${response.status}`);
   }
 
-  return response.json();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? ""; // last chunk may be incomplete — keep it buffered
+
+    for (const rawEvent of events) {
+      const line = rawEvent.trim();
+      if (!line.startsWith("data: ")) continue;
+      yield JSON.parse(line.slice("data: ".length)) as ChatStreamEvent;
+    }
+  }
 }
 
 export async function getLatestConversation(
