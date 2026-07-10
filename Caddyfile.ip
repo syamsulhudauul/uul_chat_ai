@@ -1,0 +1,10 @@
+{
+	auto_https off
+}
+
+:80 {
+	handle_path /api/* {
+		reverse_proxy be:8000
+	}
+	reverse_proxy fe:3000
+}

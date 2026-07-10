@@ -26,6 +26,10 @@ jobs:
           context: ./fe
           push: true
           tags: ghcr.io/syamsulhudauul/uul_chat_ai-fe:latest
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
 
       - uses: docker/build-push-action@v6
         with:
