@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Protocol
@@ -5,11 +6,24 @@ from typing import Protocol
 from app.agent.gateway import LLMGatewayClient
 from app.agent.store import ConversationStore, NullConversationStore
 
+# Always present, regardless of whether retrieval succeeds — identity/persona
+# must not depend on RAG working. Grounding context (below) is layered on
+# top of this, not a replacement for it.
+PERSONA_INSTRUCTIONS = (
+    "You are syamsulhudauul's AI representative, speaking to recruiters and "
+    "clients who want to know about his skills, experience, and projects. "
+    "Stay in this persona at all times — including for meta or off-topic "
+    "questions like who or what you are, or what model/company powers you. "
+    "Never reveal that you are an LLM, and never name an AI provider or "
+    "vendor (e.g. Google, OpenAI, Anthropic). For such questions, briefly "
+    "decline and redirect to what you can actually help with: his skills, "
+    "experience, projects, and contact info."
+)
+
 GROUNDING_INSTRUCTIONS = (
-    "You are the AI representative of syamsulhudauul, an Applied AI Engineer. "
-    "Answer using only the following grounding context about him. "
-    "If the answer isn't covered by the context, say you don't have that "
-    "information rather than guessing."
+    "Answer questions about syamsulhudauul using only the following "
+    "grounding context. If the answer isn't covered by the context, say "
+    "you don't have that information rather than guessing."
 )
 
 MAX_TOOL_ITERATIONS = 3
@@ -60,25 +74,32 @@ class AgentCore:
         self.retriever = retriever
         self.tools = tools
 
+    async def _retrieve_safe(self, user_message: str) -> list[dict]:
+        if self.retriever is None:
+            return []
+        try:
+            return await self.retriever.retrieve(user_message)
+        except Exception:
+            # A flaky/misconfigured embeddings provider shouldn't 500 the
+            # whole turn — degrade to an ungrounded reply instead.
+            return []
+
     async def run_turn(self, conversation_id: str, user_message: str) -> AgentReply:
-        history = await self.store.get_history(conversation_id)
-        messages = list(history)
+        # History and retrieval are independent reads — fetch concurrently
+        # instead of paying for both round trips serially.
+        history, chunks = await asyncio.gather(
+            self.store.get_history(conversation_id),
+            self._retrieve_safe(user_message),
+        )
 
-        if self.retriever is not None:
-            try:
-                chunks = await self.retriever.retrieve(user_message)
-            except Exception:
-                # A flaky/misconfigured embeddings provider shouldn't 500 the
-                # whole turn — degrade to an ungrounded reply instead.
-                chunks = []
-            if chunks:
-                context = "\n\n".join(
-                    f"[{chunk['source_doc']}] {chunk['content']}" for chunk in chunks
-                )
-                messages.insert(
-                    0, {"role": "system", "content": f"{GROUNDING_INSTRUCTIONS}\n\n{context}"}
-                )
+        system_content = PERSONA_INSTRUCTIONS
+        if chunks:
+            context = "\n\n".join(
+                f"[{chunk['source_doc']}] {chunk['content']}" for chunk in chunks
+            )
+            system_content = f"{PERSONA_INSTRUCTIONS}\n\n{GROUNDING_INSTRUCTIONS}\n\n{context}"
 
+        messages = [{"role": "system", "content": system_content}, *history]
         messages.append({"role": "user", "content": user_message})
 
         model = "cheap"
@@ -122,7 +143,10 @@ class AgentCore:
                 "I couldn't finish resolving that request."
             )
 
-        await self.store.append_message(conversation_id, "user", user_message, None)
-        await self.store.append_message(conversation_id, "assistant", reply_text, model)
+        # Independent writes — no need to serialize them.
+        await asyncio.gather(
+            self.store.append_message(conversation_id, "user", user_message, None),
+            self.store.append_message(conversation_id, "assistant", reply_text, model),
+        )
 
         return AgentReply(text=reply_text, model_used=model)

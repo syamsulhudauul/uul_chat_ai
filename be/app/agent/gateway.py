@@ -11,11 +11,21 @@ class LLMGatewayClient:
     BE code should only ever go through this client, never call a provider
     SDK directly — swapping providers/models is a LiteLLM config change,
     not a code change.
+
+    Holds one persistent httpx.AsyncClient rather than opening a new
+    connection per call — every request here targets the same LiteLLM host,
+    so a fresh TLS handshake per call is pure waste (matches the pattern
+    already used by SupabaseConversationStore/RAGRetriever/KnowledgeLookup).
     """
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None):
         self.base_url = base_url or settings.litellm_base_url
         self.api_key = api_key or settings.litellm_api_key
+        self._client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            timeout=60,
+        )
 
     async def chat_completion(
         self, messages: list[dict], model: str = "cheap", tools: list[dict] | None = None
@@ -27,26 +37,18 @@ class LLMGatewayClient:
         if tools:
             payload["tools"] = tools
 
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
-            response = await client.post(
-                "/chat/completions",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]
+        response = await self._client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]
 
     async def embed(self, text: str, model: str = "embeddings") -> list[float]:
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
-            response = await client.post(
-                "/embeddings",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "input": text},
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["data"][0]["embedding"]
+        response = await self._client.post(
+            "/embeddings", json={"model": model, "input": text}
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["data"][0]["embedding"]
 
     async def transcribe(
         self, audio_bytes: bytes, audio_format: str = "wav", model: str = "cheap"
@@ -86,11 +88,8 @@ class LLMGatewayClient:
         """LiteLLM's Gemini TTS route already returns a properly headered
         WAV file (confirmed live), not raw PCM — no wrapping needed here.
         """
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=60) as client:
-            response = await client.post(
-                "/audio/speech",
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={"model": model, "input": text, "voice": voice},
-            )
-            response.raise_for_status()
-            return response.content
+        response = await self._client.post(
+            "/audio/speech", json={"model": model, "input": text, "voice": voice}
+        )
+        response.raise_for_status()
+        return response.content

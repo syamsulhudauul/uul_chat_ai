@@ -1,6 +1,6 @@
 import pytest
 
-from app.agent.core import AgentCore
+from app.agent.core import AgentCore, GROUNDING_INSTRUCTIONS, PERSONA_INSTRUCTIONS
 
 
 class FakeGatewayClient:
@@ -88,8 +88,9 @@ async def test_run_turn_includes_prior_history_in_gateway_call():
     await agent.run_turn("conv-1", "What are your skills?")
 
     sent_messages, _model, _tools = gateway.calls[0]
-    assert sent_messages[0] == prior_history[0]
-    assert sent_messages[1] == prior_history[1]
+    assert sent_messages[0]["role"] == "system"
+    assert sent_messages[1] == prior_history[0]
+    assert sent_messages[2] == prior_history[1]
     assert sent_messages[-1] == {"role": "user", "content": "What are your skills?"}
 
 
@@ -140,14 +141,17 @@ async def test_run_turn_grounds_reply_with_retrieved_chunks():
 
 
 @pytest.mark.asyncio
-async def test_run_turn_without_retriever_has_no_system_message():
+async def test_run_turn_without_retriever_still_has_persona_system_message():
     gateway = FakeGatewayClient()
     agent = AgentCore(gateway=gateway)
 
     await agent.run_turn("conv-1", "hi")
 
     sent_messages, _model, _tools = gateway.calls[0]
-    assert all(message["role"] != "system" for message in sent_messages)
+    system_messages = [m for m in sent_messages if m["role"] == "system"]
+    assert len(system_messages) == 1
+    assert PERSONA_INSTRUCTIONS in system_messages[0]["content"]
+    assert GROUNDING_INSTRUCTIONS not in system_messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -159,11 +163,14 @@ async def test_run_turn_degrades_gracefully_when_retriever_raises():
 
     assert result.text == "I can still answer, just not grounded this time."
     sent_messages, _model, _tools = gateway.calls[0]
-    assert all(message["role"] != "system" for message in sent_messages)
+    system_messages = [m for m in sent_messages if m["role"] == "system"]
+    assert len(system_messages) == 1
+    assert PERSONA_INSTRUCTIONS in system_messages[0]["content"]
+    assert GROUNDING_INSTRUCTIONS not in system_messages[0]["content"]
 
 
 @pytest.mark.asyncio
-async def test_run_turn_with_retriever_but_no_matches_has_no_system_message():
+async def test_run_turn_with_retriever_but_no_matches_has_persona_only():
     gateway = FakeGatewayClient()
     retriever = FakeRetriever([])
     agent = AgentCore(gateway=gateway, retriever=retriever)
@@ -171,7 +178,21 @@ async def test_run_turn_with_retriever_but_no_matches_has_no_system_message():
     await agent.run_turn("conv-1", "hi")
 
     sent_messages, _model, _tools = gateway.calls[0]
-    assert all(message["role"] != "system" for message in sent_messages)
+    system_messages = [m for m in sent_messages if m["role"] == "system"]
+    assert len(system_messages) == 1
+    assert PERSONA_INSTRUCTIONS in system_messages[0]["content"]
+    assert GROUNDING_INSTRUCTIONS not in system_messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_persona_instructions_forbid_revealing_llm_identity():
+    # Guards the specific bug this was written for: the bot answering
+    # off-topic/meta questions ("explain yourself") by breaking character
+    # and revealing it's an LLM from some provider.
+    lowered = PERSONA_INSTRUCTIONS.lower()
+    assert "never reveal" in lowered
+    assert "llm" in lowered
+    assert "stay in this persona" in lowered
 
 
 class FakeToolExecutor:
